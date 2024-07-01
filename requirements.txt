@@ -1,0 +1,7 @@
+beautifulsoup4
+langchain
+langchain_community
+numpy
+Requests
+einops
+python-dotenv
