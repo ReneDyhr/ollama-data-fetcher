@@ -6,6 +6,7 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import json
+from datetime import datetime
 
 load_dotenv()
 
@@ -14,6 +15,14 @@ CACHE_FILE = 'document_cache.pkl'
 embedding_model = HuggingFaceEmbeddings(model_name="nomic-ai/nomic-embed-text-v1.5", model_kwargs={
     "trust_remote_code": True
 })
+
+def cache_data(docs, cache_file):
+    with open(cache_file, 'wb') as f:
+        pickle.dump(docs, f)
+
+def load_cached_data(cache_file):
+    with open(cache_file, 'rb') as f:
+        return pickle.load(f)
 
 # Print iterations progress
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -64,24 +73,42 @@ def fetch_json(url):
         print(f"Error parsing JSON: {e}")
         return None
 
-def extract_urls(json_data):
+# Function to extract URLs based on updated timestamps
+def extract_urls(json_data, reference_time=None, last_extraction_time=None):
     urls = []
     if isinstance(json_data, list):
         for data in json_data:
-            if data.get('url'):
-                urls.append(data.get('url'))
+            url = data.get('url')
+            updated_at_str = data.get('updated_at')
+            if url and updated_at_str:
+                updated_at = datetime.strptime(updated_at_str, '%Y-%m-%d %H:%M:%S')
+                if (reference_time is None or updated_at >= reference_time) and \
+                   (last_extraction_time is None or updated_at >= last_extraction_time):
+                    urls.append(url)
     return urls
 
+# Read the last extraction time from the file
+EXTRACTION_TIME = 'data/extraction_time.pkl'
+extraction_time = load_cached_data(EXTRACTION_TIME) if os.path.exists(EXTRACTION_TIME) else None
+last_extraction_time = datetime.strptime(extraction_time, '%Y-%m-%d %H:%M:%S') if extraction_time else None
+
+# Define the reference time (if needed)
+reference_time = datetime.now()
 
 json_url = os.getenv('FETCHER_URL')
 json_data = fetch_json(json_url)
 url_list = []
 if json_data:
-    url_list = extract_urls(json_data)
+    url_list = extract_urls(json_data, None, last_extraction_time)
 else:
     print("Failed to retrieve or parse JSON data.")
     exit(1)
 
+if not url_list:
+    print("No new URLs to fetch.")
+    exit(0)
+# Update the extraction time to now and store it back to the file
+cache_data(reference_time.strftime('%Y-%m-%d %H:%M:%S'), EXTRACTION_TIME)
 
 class Document:
     def __init__(self, page_content, metadata, embedding=None):
@@ -160,8 +187,6 @@ class AuthenticatedWebBaseLoader:
                     document = Document(page_content='Page Title: ' + " - ".join(titles) + '\nSource: ' + path.replace('&printable=yes', '') + '\nContent: ' + content, metadata={"title": " - ".join(titles), "source": path.replace('&printable=yes', '')})
                     documents.append(document)
             # exit()
-            # document = Document(page_content=soup.get_text(), metadata={"source": path})
-            # documents.append(document)
             printProgressBar(i, len(self.web_paths), prefix = 'Progress:', suffix = 'Complete', length = 50)
         return documents
     def _format_table(self, table):
@@ -186,14 +211,6 @@ class AuthenticatedWebBaseLoader:
         new_paragraph = BeautifulSoup("<p></p>", "html.parser").new_tag("p")
         new_paragraph.string = formatted_table + "\n\n"
         return new_paragraph
-
-def cache_documents(docs, cache_file):
-    with open(cache_file, 'wb') as f:
-        pickle.dump(docs, f)
-
-def load_cached_documents(cache_file):
-    with open(cache_file, 'rb') as f:
-        return pickle.load(f)
 
 cookies = json.loads(os.getenv('COOKIES'))
 
@@ -221,10 +238,12 @@ for doc in docs:
         doc.embedding = embedding
         printProgressBar(i, len(docs), prefix = 'Progress:', suffix = 'Complete', length = 50)
 
-cache_documents(docs, CACHE_FILE)
+cache_data(docs, CACHE_FILE)
 
 response = send_file(CACHE_FILE, os.getenv('UPLOAD_URL'))
 if response:
     print("Server response:", response)
+    # Delete the cache file after successful upload
+    os.remove(CACHE_FILE)
 else:
     print("Failed to send the file or parse the server response.")
