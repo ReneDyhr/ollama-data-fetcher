@@ -5,3 +5,4 @@ numpy
 Requests
 einops
 python-dotenv
+sentence-transformers
