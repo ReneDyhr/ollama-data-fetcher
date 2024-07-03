@@ -149,10 +149,15 @@ class AuthenticatedWebBaseLoader:
 
             # Find all unordered lists
             unordered_lists = soup.find_all("ul")
-
             for ul in unordered_lists:
                 formatted_list = self._format_list(ul)
                 ul.replace_with(formatted_list)
+
+            # Find all numbered lists
+            numbered_lists = soup.find_all("ol")
+            for ol in numbered_lists:
+                formatted_list = self._format_number_list(ol)
+                ol.replace_with(formatted_list)
 
             # Extract sections by headers
             sections = soup.find_all(["h1", "h2", "h3"])
@@ -196,11 +201,11 @@ class AuthenticatedWebBaseLoader:
             # exit()
             printProgressBar(i, len(self.web_paths), prefix = 'Progress:', suffix = 'Complete', length = 50)
         return documents
-    def _get_text_without_nested_ul(self, li):
-        # Extract text content excluding nested <ul>
+    def _get_text_without_nested(self, li):
+        # Extract text content excluding nested <ul> or <ol> elements
         text_parts = []
         for child in li.children:
-            if child.name == "ul":
+            if child.name in ["ul", "ol"]:
                 break
             elif isinstance(child, str):
                 text_parts.append(child.strip())
@@ -210,11 +215,26 @@ class AuthenticatedWebBaseLoader:
     def _format_list(self, ul, level=0):
         items = []
         for li in ul.find_all("li", recursive=False):
-            item_text = self._get_text_without_nested_ul(li)
+            item_text = self._get_text_without_nested(li)
             nested_ul = li.find("ul")
             if nested_ul:
                 item_text += "\n" + self._format_list(nested_ul, level + 1)
             items.append("  " * level + "- " + item_text)
+        formatted_list = "\n".join(items)
+        if level == 0:
+            new_paragraph = BeautifulSoup("<p></p>", "html.parser").new_tag("p")
+            new_paragraph.string = formatted_list + "\n\n"
+        else:
+            new_paragraph = formatted_list
+        return new_paragraph
+    def _format_number_list(self, ol, level=0):
+        items = []
+        for i, li in enumerate(ol.find_all("li", recursive=False), start=1):
+            item_text = self._get_text_without_nested(li)
+            nested_ol = li.find("ol")
+            if nested_ol:
+                item_text += "\n" + self._format_number_list(nested_ol, level + 1)
+            items.append("  " * level + f"{i}. " + item_text)
         formatted_list = "\n".join(items)
         if level == 0:
             new_paragraph = BeautifulSoup("<p></p>", "html.parser").new_tag("p")
