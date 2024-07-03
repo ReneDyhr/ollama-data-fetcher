@@ -169,25 +169,30 @@ class AuthenticatedWebBaseLoader:
                     cnt += 1
                 section_title = section.get_text()
                 section_content = []
+                collapsible = []
                 for sibling in section.next_siblings:
                     if sibling.name in ["h1", "h2", "h3"]:
                         break
+                    if sibling.name in ["div"] and "mw-collapsible" in sibling['class']:
+                        collapsible.append(sibling)
                     if sibling.name in ["table", "ul"]:
                         section_content.append(sibling.get_text() + "\n\n")
-                    if sibling.name in ["div"] and "mw-collapsible" in sibling['class']:
+                    if sibling.name in ["p", "ol", "pre", "h4", "h5", "h6"]:
+                        section_content.append(sibling.get_text())
+
+                titles = [page_title]
+                titles.append(section_title)
+
+                for sibling in collapsible:
                         header = sibling.find_previous('h2')
                         collapsible_title = ""
                         if header:
                             collapsible_title += header.get_text() + " - "
                         collapsible_title += sibling.find('div').get_text()
                         collapsible_content = sibling.find('div', class_="mw-collapsible-content").get_text()
-                        section_content.append('Title: ' + collapsible_title + "\nDescription: " + collapsible_content.strip()+"\n\n")
-                        # print('Title ' + collapsible_title + "\nDescription: " + collapsible_content+"\n")
-                    if sibling.name in ["p", "ol", "pre", "h4", "h5", "h6"]:
-                        section_content.append(sibling.get_text())
-
-                titles = [page_title]
-                titles.append(section_title)
+                        document = Document(page_content='Page Title: ' + " - ".join(titles) + " - " + collapsible_title + '\nSource: ' + path.replace('&printable=yes', '') + '\nContent: ' + collapsible_content.strip(), metadata={"title": " - ".join(titles) + " - " + collapsible_title, "source": path.replace('&printable=yes', '')})
+                        # print(document.page_content)
+                        documents.append(document)
 
                 content = " ".join(section_content)
 
