@@ -147,6 +147,13 @@ class AuthenticatedWebBaseLoader:
                 formatted_table = self._format_table(table)
                 table.replace_with(formatted_table)
 
+            # Find all unordered lists
+            unordered_lists = soup.find_all("ul")
+
+            for ul in unordered_lists:
+                formatted_list = self._format_list(ul)
+                ul.replace_with(formatted_list)
+
             # Extract sections by headers
             sections = soup.find_all(["h1", "h2", "h3"])
             cnt = 0
@@ -160,7 +167,7 @@ class AuthenticatedWebBaseLoader:
                 for sibling in section.next_siblings:
                     if sibling.name in ["h1", "h2", "h3"]:
                         break
-                    if sibling.name in ["table"]:
+                    if sibling.name in ["table", "ul"]:
                         section_content.append(sibling.get_text() + "\n\n")
                     if sibling.name in ["div"] and "mw-collapsible" in sibling['class']:
                         header = sibling.find_previous('h2')
@@ -171,7 +178,7 @@ class AuthenticatedWebBaseLoader:
                         collapsible_content = sibling.find('div', class_="mw-collapsible-content").get_text()
                         section_content.append('Title: ' + collapsible_title + "\nDescription: " + collapsible_content.strip()+"\n\n")
                         # print('Title ' + collapsible_title + "\nDescription: " + collapsible_content+"\n")
-                    if sibling.name in ["p", "ul", "ol", "pre", "h4", "h5", "h6"]:
+                    if sibling.name in ["p", "ol", "pre", "h4", "h5", "h6"]:
                         section_content.append(sibling.get_text())
 
                 titles = [page_title]
@@ -189,6 +196,32 @@ class AuthenticatedWebBaseLoader:
             # exit()
             printProgressBar(i, len(self.web_paths), prefix = 'Progress:', suffix = 'Complete', length = 50)
         return documents
+    def _get_text_without_nested_ul(self, li):
+        # Extract text content excluding nested <ul>
+        text_parts = []
+        for child in li.children:
+            if child.name == "ul":
+                break
+            elif isinstance(child, str):
+                text_parts.append(child.strip())
+            elif child.name == "a":
+                text_parts.append(child.get_text(strip=True))
+        return " ".join(text_parts)
+    def _format_list(self, ul, level=0):
+        items = []
+        for li in ul.find_all("li", recursive=False):
+            item_text = self._get_text_without_nested_ul(li)
+            nested_ul = li.find("ul")
+            if nested_ul:
+                item_text += "\n" + self._format_list(nested_ul, level + 1)
+            items.append("  " * level + "- " + item_text)
+        formatted_list = "\n".join(items)
+        if level == 0:
+            new_paragraph = BeautifulSoup("<p></p>", "html.parser").new_tag("p")
+            new_paragraph.string = formatted_list + "\n\n"
+        else:
+            new_paragraph = formatted_list
+        return new_paragraph
     def _format_table(self, table):
         # Extract headers
         headers = [th.get_text(strip=True).lstrip() for th in table.find_all("th")]
