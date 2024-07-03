@@ -204,7 +204,7 @@ class AuthenticatedWebBaseLoader:
                 break
             elif isinstance(child, str):
                 text_parts.append(child.strip())
-            elif child.name == "a":
+            elif child.name in ["a", "b", "i", "u"]:
                 text_parts.append(child.get_text(strip=True))
         return " ".join(text_parts)
     def _format_list(self, ul, level=0):
